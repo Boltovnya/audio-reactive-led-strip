@@ -11,7 +11,7 @@ def start_stream(callback):
                     channels=1,
                     rate=config.MIC_RATE,
                     input=True,
-                    frames_per_buffer=frames_per_buffer)
+                    frames_per_buffer=frames_per_buffer)# append frames_per_buffer=frames_per_buffer
     overflows = 0
     prev_ovf_time = time.time()
     while True:
@@ -20,10 +20,12 @@ def start_stream(callback):
             y = y.astype(np.float32)
             callback(y)
         except IOError:
-            overflows += 1
+            pass
+            '''overflows += 1
             if time.time() > prev_ovf_time + 1:
                 prev_ovf_time = time.time()
                 print('Audio buffer has overflowed {} times'.format(overflows))
+            '''
     stream.stop_stream()
     stream.close()
     p.terminate()

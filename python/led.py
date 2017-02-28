@@ -4,6 +4,7 @@ from __future__ import division
 import platform
 import numpy as np
 import config
+import sys
 
 # ESP8266 uses WiFi communication
 if config.DEVICE == 'esp8266':
@@ -59,14 +60,21 @@ def _update_esp8266():
     """
     global pixels, _prev_pixels
     # Truncate values and cast to integer
-    pixels = np.clip(pixels, 0, 255).astype(int)
+    pixels = np.clip(pixels, 0, 256).astype(int) # Returns ndarray
+    print("Length of pixels = %s" % len(pixels))
+    print(pixels)
+    #sys.exit()
     # Optionally apply gamma correc tio
     p = _gamma[pixels] if config.SOFTWARE_GAMMA_CORRECTION else np.copy(pixels)
-    MAX_PIXELS_PER_PACKET = 126
+    MAX_PIXELS_PER_PACKET = 1024
     # Pixel indices
-    idx = range(pixels.shape[1])
-    idx = [i for i in idx if not np.array_equal(p[:, i], _prev_pixels[:, i])]
+    idx = range(pixels.shape[1]) # returns range(0,255)
+    print(idx)
+    #print(idx)
+    #print(type(idx))
+    #idx = [i for i in idx if not np.array_equal(p[:, i], _prev_pixels[:, i])]
     n_packets = len(idx) // MAX_PIXELS_PER_PACKET + 1
+    print(n_packets)
     idx = np.array_split(idx, n_packets)
     for packet_indices in idx:
         m = '' if _is_python_2 else []
@@ -74,14 +82,36 @@ def _update_esp8266():
             if _is_python_2:
                 m += chr(i) + chr(p[0][i]) + chr(p[1][i]) + chr(p[2][i])
             else:
-                m.append(i)  # Index of pixel to change
-                m.append(p[0][i])  # Pixel red value
-                m.append(p[1][i])  # Pixel green value
-                m.append(p[2][i])  # Pixel blue value
-        m = m if _is_python_2 else bytes(m)
-        _sock.sendto(m, (config.UDP_IP, config.UDP_PORT))
+                # Index of pixel to change
+                m.append(min(max(p[0][i],0), 255))  # Pixel red value
+                m.append(min(max(p[1][i],0),255))  # Pixel green value
+                m.append(min(max(p[2][i],0), 255))  # Pixel blue value
+        #print(type(m))
+        print(m)
+        send_frame(m)
+        #m = m if _is_python_2 else bytes(m)
+        #_sock.sendto(m, (config.UDP_IP, config.UDP_PORT))
     _prev_pixels = np.copy(p)
 
+def send_frame(frame, limit=486):
+    pos = 0
+    while pos < len(frame):
+        #print(len(frame), pixel, len(frame)-pixel)
+        if len(frame) - pos <= limit * 3:
+            pixel = int(pos / 3)
+            message = [0x04, pixel >> 8, (pixel & 255)] + frame[pos:]
+            #print("frame {}:{} (last)".format(pos, ""))
+            #print(message)
+            _sock.sendto(bytes(message), (config.UDP_IP, config.UDP_PORT))
+            pos = pos + len(frame)
+        else:
+            pixel = int(pos / 3)
+            message = [0x05, (pixel >> 8), (pixel & 255)] + frame[pos:pos+(limit*3)]
+            #print("frame {}:{}".format(pos, pos+limit))
+            #print(message)
+            _sock.sendto(bytes(message), (config.UDP_IP, config.UDP_PORT))
+            #time.sleep(0.01)
+            pos = pos + (limit * 3)
 
 def _update_pi():
     """Writes new LED values to the Raspberry Pi's LED strip
@@ -113,7 +143,7 @@ def _update_blinkstick():
         This function updates the LED strip with new values.
     """
     global pixels
-    
+
     # Truncate values and cast to integer
     pixels = np.clip(pixels, 0, 255).astype(int)
     # Optional gamma correction
